@@ -1,4 +1,12 @@
 "use client";
+
+const WELCOME = `Oi! Eu sou a Dotty, sua nova assistente. 💗
+Antes da gente começar, me conta rapidinho:
+1) Seu nome? 
+2) Seu nicho?
+3) O que você quer fazer hoje? (ex.: ideias de posts, copy de anúncio, estratégias de vendas, conteúdo ...)
+
+Com isso eu já te trago sugestões certeiras ✨`;
 import { useState } from "react";
 
 export default function Home() {
@@ -39,7 +47,7 @@ export default function Home() {
     return (
       <main className="min-h-screen grid place-items-center p-6 bg-dottyBlue/20">
         <div className="card max-w-md w-full">
-          <h1 className="font-semibold mb-1">Dotty Premium</h1>
+          <h1 className="font-semibold mb-1">DOTTY IA</h1>
           <p className="text-sm text-gray-600 mb-3">Acesso por código (Kiwify)</p>
           <input className="w-full border rounded-lg p-3 mb-3" placeholder="Seu código (ex.: KIWI-2025-CLIENTE)"
                  value={code} onChange={e=>setCode(e.target.value)} />
@@ -53,8 +61,8 @@ export default function Home() {
   return (
     <main className="max-w-3xl mx-auto p-4">
       <header className="sticky top-0 bg-white/80 backdrop-blur border-b p-3 mb-4">
-        <h1 className="font-semibold">Dotty Premium</h1>
-        <p className="text-sm text-gray-500">IA para marketing, anúncios e criativos</p>
+        <h1 className="font-semibold">DOTTY IA</h1>
+        <p className="text-sm text-gray-500">Perfeita nas suas estratégias, campanhas & imagens</p>
       </header>
 
       <section className="card mb-6">
