@@ -14,6 +14,7 @@ export async function POST(req: Request) {
   const prompt = body?.prompt;
   if (!prompt) return json({ error: "missing prompt" }, 400);
 
+  // Se quiser baratear no começo, troque "1024x1024" por "512x512"
   const r = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
@@ -37,5 +38,6 @@ export async function POST(req: Request) {
   const data = await r.json();
   const b64 = data?.data?.[0]?.b64_json;
   if (!b64) return json({ error: "no-image" }, 500);
+
   return json({ url: `data:image/png;base64,${b64}` });
 }
