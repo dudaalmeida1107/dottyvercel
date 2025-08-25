@@ -1,137 +1,275 @@
 "use client";
 
-const WELCOME = `Oi! Eu sou a Dotty, sua nova assistente. 💗
-Antes da gente começar, me conta rapidinho:
-1) Seu nome? 
-2) Seu nicho?
-3) O que você quer fazer hoje? (ex.: ideias de posts, copy de anúncio, estratégias de vendas, conteúdo ...)
+import { useEffect, useState } from "react";
 
-Com isso eu já te trago sugestões certeiras ✨`;
-import { useState } from "react";
+type Msg = { role: "user" | "assistant"; text: string };
+
+const WELCOME = `Oi! 😊 Que bom te ver por aqui! Posso te ajudar com algo?
+Antes, me conta rapidinho:
+1) Qual é o seu nome?
+2) Em qual nicho você atua (papelaria criativa ou outro)?
+3) Qual é o seu objetivo imediato? (ex.: ideias de posts, copy de anúncio, mockup no Canva, reels, Pinterest, TikTok...)
+
+Com isso eu já te trago sugestões certeiras e, se quiser, até um prompt pronto pra gerar a imagem perfeita.`;
+
+function pickErrorDetail(data: any): string {
+  return (
+    data?.detail?.error?.message ||
+    data?.detail?.message ||
+    data?.detail ||
+    data?.error_description ||
+    data?.error ||
+    "Falha desconhecida"
+  );
+}
 
 export default function Home() {
+  // ---- GATE / CÓDIGO DE ACESSO ----
   const [code, setCode] = useState("");
   const [entered, setEntered] = useState(false);
+
+  // ---- CHAT ----
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<{role:"user"|"assistant"; text:string}[]>([]);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([
+    { role: "assistant", text: WELCOME },
+  ]);
+
+  // ---- IMAGEM ----
   const [imgPrompt, setImgPrompt] = useState("");
-  const [imgUrl, setImgUrl] = useState("");
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [loadingImg, setLoadingImg] = useState(false);
 
-  const headers = { "Content-Type": "application/json", "x-access-code": code };
+  // restaura código salvo (se houver)
+  useEffect(() => {
+    const saved = localStorage.getItem("access_code");
+    if (saved) {
+      setCode(saved);
+      setEntered(true);
+    }
+  }, []);
 
-  async function enter() {
-    const r = await fetch("/api/chat", { headers });
-    setEntered(r.ok);
-    if (!r.ok) alert("Código inválido. Verifique seu e-mail.");
+  function handleEnter() {
+    const c = code.trim();
+    localStorage.setItem("access_code", c);
+    setEntered(true);
   }
 
-  async function send() {
-    if (!input.trim()) return;
-    const user = { role: "user" as const, text: input };
-    setMsgs(m => [...m, user]);
+  async function sendMessage() {
+    const prompt = input.trim();
+    if (!prompt || loadingChat) return;
+
+    setMsgs((m) => [...m, { role: "user", text: prompt }]);
     setInput("");
-    const r = await fetch("/api/chat", { method: "POST", headers, body: JSON.stringify({ prompt: user.text }) });
-    const data = await r.json();
-    const assistant = { role: "assistant" as const, text: data?.reply || "Erro ao responder." };
-    setMsgs(m => [...m, assistant]);
-  }
+    setLoadingChat(true);
 
-  async function handleGenerateImage() {
-  const prompt = imgPrompt.trim();
-  if (!prompt || loadingImg) return;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-code": code || localStorage.getItem("access_code") || "",
+        },
+        body: JSON.stringify({ prompt }),
+      });
 
-  setLoadingImg(true);
-  setImgUrl(null);
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {}
 
-  try {
-    const res = await fetch("/api/image", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-access-code": code || localStorage.getItem("access_code") || "",
-      },
-      body: JSON.stringify({ prompt }),
-    });
-
-    // Recebe texto cru e tenta parsear. Se não for JSON, mostra o texto mesmo
-    const raw = await res.text();
-    let data: any;
-    try { data = JSON.parse(raw); } catch { data = { error: "not-json", detail: raw }; }
-
-    if (!res.ok || data?.error) {
-      const detail =
-        data?.detail?.error?.message ||
-        data?.detail?.message ||
-        data?.detail ||
-        data?.error ||
-        "Falha desconhecida";
-
+      if (!res.ok || data?.error) {
+        const detail = pickErrorDetail(data);
+        setMsgs((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text:
+              "❌ Erro ao responder: " +
+              detail +
+              "\n\nDica: verifique sua OPENAI_API_KEY (Preview), saldo/quota ou tente novamente.",
+          },
+        ]);
+      } else {
+        const reply = (data?.reply || "").trim();
+        setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+      }
+    } catch (e: any) {
       setMsgs((m) => [
         ...m,
         {
           role: "assistant",
-          text: `🖼️❌ Erro ao gerar imagem: ${detail}
-Dica: confirme OPENAI_API_KEY (em Preview), saldo/quota ativos e o modelo "gpt-image-1".`,
+          text:
+            "❌ Erro de rede ao responder: " +
+            (e?.message || "desconhecido"),
         },
       ]);
-      return;
+    } finally {
+      setLoadingChat(false);
     }
-
-    setImgUrl(data.url); // "data:image/png;base64,..."
-  } catch (e: any) {
-    setMsgs((m) => [
-      ...m,
-      { role: "assistant", text: `🖼️❌ Erro de rede: ${e?.message || "desconhecido"}` },
-    ]);
-  } finally {
-    setLoadingImg(false);
   }
-}
+
+  // ==============================
+  //  B) GERAR IMAGEM (COM ERRO REAL)
+  // ==============================
+  async function handleGenerateImage() {
+    const prompt = imgPrompt.trim();
+    if (!prompt || loadingImg) return;
+
+    setLoadingImg(true);
+    setImgUrl(null);
+
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-code": code || localStorage.getItem("access_code") || "",
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      // Em alguns casos o backend pode devolver texto puro.
+      const raw = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { error: "not-json", detail: raw };
+      }
+
+      if (!res.ok || data?.error) {
+        const detail = pickErrorDetail(data);
+        setMsgs((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: `🖼️❌ Erro ao gerar imagem: ${detail}
+Dica: confirme OPENAI_API_KEY (Preview), saldo/quota ativos e o modelo "gpt-image-1".`,
+          },
+        ]);
+        return;
+      }
+
+      setImgUrl(data.url); // data:image/png;base64,...
+    } catch (e: any) {
+      setMsgs((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text:
+            "🖼️❌ Erro de rede ao gerar imagem: " +
+            (e?.message || "desconhecido"),
+        },
+      ]);
+    } finally {
+      setLoadingImg(false);
+    }
+  }
 
   if (!entered) {
     return (
-      <main className="min-h-screen grid place-items-center p-6 bg-dottyBlue/20">
-        <div className="card max-w-md w-full">
-          <h1 className="font-semibold mb-1">DOTTY IA</h1>
-          <p className="text-sm text-gray-600 mb-3">Acesso por código (Kiwify)</p>
-          <input className="w-full border rounded-lg p-3 mb-3" placeholder="Seu código (ex.: KIWI-2025-CLIENTE)"
-                 value={code} onChange={e=>setCode(e.target.value)} />
-          <button onClick={enter} className="btn w-full" style={{background:"#fa80ac"}}>Entrar</button>
-          <p className="text-xs text-gray-500 mt-2">Dica: não diferencia maiúsculas/minúsculas; aceita traços comuns.</p>
+      <main className="mx-auto max-w-xl p-6">
+        <h1 className="text-2xl font-semibold mb-4">Dotty Premium</h1>
+        <div className="rounded-xl border p-5 bg-white/70">
+          <p className="text-sm mb-3">
+            Acesso por código (Kiwify/Hotmart/etc)
+          </p>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="KIWI-TESTE-001"
+            className="w-full rounded-lg border px-3 py-2 mb-3"
+          />
+          <button
+            onClick={handleEnter}
+            className="rounded-lg bg-pink-500 text-white px-4 py-2 hover:opacity-90"
+          >
+            Entrar
+          </button>
+          <p className="text-xs mt-2 text-gray-500">
+            Dica: não diferencia maiúsculas/minúsculas; aceita traços comuns.
+          </p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="max-w-3xl mx-auto p-4">
-      <header className="sticky top-0 bg-white/80 backdrop-blur border-b p-3 mb-4">
-        <h1 className="font-semibold">DOTTY IA</h1>
-        <p className="text-sm text-gray-500">Perfeita nas suas estratégias, campanhas & imagens</p>
-      </header>
+    <main className="mx-auto max-w-3xl p-6">
+      <h1 className="text-2xl font-semibold">DOTTY IA</h1>
+      <p className="text-sm text-gray-600 mb-5">
+        Perfeita nas suas estratégias, campanhas & imagens
+      </p>
 
-      <section className="card mb-6">
-        <div className="space-y-3">
-          {msgs.map((m,i)=>(
-            <div key={i} className={m.role==="user"?"bg-gray-100 p-3 rounded-xl":"bg-dottyPink/10 p-3 rounded-xl"}>
-              <div className="text-xs opacity-60">{m.role}</div>
-              <div>{m.text}</div>
+      {/* Chat */}
+      <section className="rounded-2xl border bg-white/70 p-4 mb-6">
+        <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+          {msgs.map((m, i) => (
+            <div
+              key={i}
+              className={`rounded-xl p-3 ${
+                m.role === "assistant"
+                  ? "bg-pink-50 border border-pink-100"
+                  : "bg-gray-50 border"
+              }`}
+            >
+              <div className="text-xs text-gray-500 mb-1">
+                {m.role}
+              </div>
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {m.text}
+              </div>
             </div>
           ))}
         </div>
-        <div className="flex gap-2 mt-3">
-          <input className="flex-1 border rounded-lg p-3" placeholder="Escreva sua mensagem..." value={input} onChange={e=>setInput(e.target.value)} />
-          <button onClick={send} className="btn" style={{background:"#fa80ac"}}>Enviar</button>
+
+        <div className="flex gap-2 mt-4">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            placeholder="Escreva sua mensagem..."
+            className="flex-1 rounded-xl border px-3 py-2"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loadingChat}
+            className="rounded-xl bg-pink-500 text-white px-4 py-2 disabled:opacity-50"
+          >
+            {loadingChat ? "Enviando..." : "Enviar"}
+          </button>
         </div>
       </section>
 
-      <section className="card">
-        <h2 className="font-medium mb-2">🎨 Criar imagem</h2>
+      {/* Imagem */}
+      <section className="rounded-2xl border bg-white/70 p-4">
+        <h3 className="font-medium mb-3">🎨 Criar imagem</h3>
         <div className="flex gap-2">
-          <input className="flex-1 border rounded-lg p-3" placeholder="Ex.: caderno A5, cantos retos, espiral branco, elástico rosa..." value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} />
-          <button onClick={genImg} className="btn" style={{background:"#ab6b17"}}>Gerar</button>
+          <input
+            value={imgPrompt}
+            onChange={(e) => setImgPrompt(e.target.value)}
+            placeholder="Ex.: caderno A5, cantos retos, espiral branco, elástico rosa..."
+            className="flex-1 rounded-xl border px-3 py-2"
+          />
+        <button
+            onClick={handleGenerateImage}
+            disabled={loadingImg}
+            className="rounded-xl bg-amber-700 text-white px-4 py-2 disabled:opacity-50"
+          >
+            {loadingImg ? "Gerando..." : "Gerar"}
+          </button>
         </div>
-        {imgUrl && <img src={imgUrl} alt="gerada" className="mt-3 rounded-xl border" />}
+
+        {imgUrl && (
+          <div className="mt-4">
+            <img
+              src={imgUrl}
+              alt="Imagem gerada"
+              className="w-full rounded-xl border"
+            />
+          </div>
+        )}
       </section>
     </main>
   );
