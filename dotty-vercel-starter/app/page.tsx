@@ -36,12 +36,57 @@ export default function Home() {
     setMsgs(m => [...m, assistant]);
   }
 
-  async function genImg() {
-    if (!imgPrompt.trim()) return;
-    const r = await fetch("/api/image", { method: "POST", headers, body: JSON.stringify({ prompt: imgPrompt }) });
-    const data = await r.json();
-    if (data?.url) setImgUrl(data.url); else alert("Erro ao gerar imagem.");
+  async function handleGenerateImage() {
+  const prompt = imgPrompt.trim();
+  if (!prompt || loadingImg) return;
+
+  setLoadingImg(true);
+  setImgUrl(null);
+
+  try {
+    const res = await fetch("/api/image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-access-code": code || localStorage.getItem("access_code") || "",
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+    // Recebe texto cru e tenta parsear. Se não for JSON, mostra o texto mesmo
+    const raw = await res.text();
+    let data: any;
+    try { data = JSON.parse(raw); } catch { data = { error: "not-json", detail: raw }; }
+
+    if (!res.ok || data?.error) {
+      const detail =
+        data?.detail?.error?.message ||
+        data?.detail?.message ||
+        data?.detail ||
+        data?.error ||
+        "Falha desconhecida";
+
+      setMsgs((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `🖼️❌ Erro ao gerar imagem: ${detail}
+Dica: confirme OPENAI_API_KEY (em Preview), saldo/quota ativos e o modelo "gpt-image-1".`,
+        },
+      ]);
+      return;
+    }
+
+    setImgUrl(data.url); // "data:image/png;base64,..."
+  } catch (e: any) {
+    setMsgs((m) => [
+      ...m,
+      { role: "assistant", text: `🖼️❌ Erro de rede: ${e?.message || "desconhecido"}` },
+    ]);
+  } finally {
+    setLoadingImg(false);
   }
+}
 
   if (!entered) {
     return (
