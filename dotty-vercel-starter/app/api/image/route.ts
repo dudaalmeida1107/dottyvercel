@@ -1,7 +1,11 @@
+export const runtime = "nodejs";        // evita limites do Edge p/ base64
+export const dynamic = "force-dynamic"; // sem cache
+
 import { json, isAllowed } from "../_utils";
 
 export async function POST(req: Request) {
   if (!isAllowed(req)) return json({ error: "unauthorized" }, 401);
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return json({ error: "missing OPENAI_API_KEY" }, 500);
 
@@ -10,6 +14,7 @@ export async function POST(req: Request) {
   const prompt = body?.prompt;
   if (!prompt) return json({ error: "missing prompt" }, 400);
 
+  // Dica: para primeiro teste, pode reduzir para 512x512
   const r = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
@@ -33,5 +38,7 @@ export async function POST(req: Request) {
   const data = await r.json();
   const b64 = data?.data?.[0]?.b64_json;
   if (!b64) return json({ error: "no-image" }, 500);
+
+  // Data URL pronta para <img src=...>
   return json({ url: `data:image/png;base64,${b64}` });
 }
