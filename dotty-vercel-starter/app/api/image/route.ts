@@ -19,7 +19,8 @@ export async function POST(req: Request) {
     body: JSON.stringify({
       model: "gpt-image-1",
       prompt,
-      size: "1024x1024"
+      size: "1024x1024",
+      response_format: "b64_json"
     })
   });
 
@@ -28,7 +29,9 @@ export async function POST(req: Request) {
     const detail = ct.includes("json") ? await r.json() : await r.text();
     return json({ error: "openai-error", detail }, 500);
   }
+
   const data = await r.json();
-  const url = data?.data?.[0]?.url || "";
-  return json({ url });
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) return json({ error: "no-image" }, 500);
+  return json({ url: `data:image/png;base64,${b64}` });
 }
