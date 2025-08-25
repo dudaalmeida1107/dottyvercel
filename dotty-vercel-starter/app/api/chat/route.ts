@@ -1,5 +1,17 @@
 import { json, isAllowed } from "../_utils";
 
+export async function HEAD(req: Request) {
+  // usado só para validar o código: 200 ok, 401 bloqueado
+  if (!isAllowed(req)) return new Response(null, { status: 401 });
+  return new Response(null, { status: 200 });
+}
+
+export async function GET(req: Request) {
+  // fallback para validação via GET
+  if (!isAllowed(req)) return json({ error: "unauthorized" }, 401);
+  return json({ ok: true });
+}
+
 export async function POST(req: Request) {
   if (!isAllowed(req)) return json({ error: "unauthorized" }, 401);
 
@@ -11,7 +23,6 @@ export async function POST(req: Request) {
   const prompt = body?.prompt;
   if (!prompt) return json({ error: "missing prompt" }, 400);
 
-  // Chat via Chat Completions (modelo amplamente disponível)
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -25,7 +36,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "Você é a Dotty, assistente criativa e acolhedora do DottieLab. Ajude empreendedores (principalmente papelaria criativa) com ideias, anúncios, Canva, mockups, Pinterest, Instagram, TikTok e tráfego. Fale leve, motivadora e neutra. Se pedirem imagem, descreva claramente o prompt."
+            "Você é a Dotty, assistente criativa do DottieLab. Ajude com papelaria, mockups, Canva, reels, Pinterest, TikTok e anúncios. Tom acolhedor e motivador."
         },
         { role: "user", content: prompt }
       ]
