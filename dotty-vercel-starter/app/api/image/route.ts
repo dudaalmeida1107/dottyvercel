@@ -1,3 +1,4 @@
+// app/api/image/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,19 +15,18 @@ export async function POST(req: Request) {
   const prompt = body?.prompt;
   if (!prompt) return json({ error: "missing prompt" }, 400);
 
-  // Se quiser baratear no começo, troque "1024x1024" por "512x512"
   const r = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: "gpt-image-1",
       prompt,
-      size: "1024x1024",
-      response_format: "b64_json"
-    })
+      size: "1024x1024",           // se quiser baratear: "512x512"
+      response_format: "b64_json", // importante
+    }),
   });
 
   const ct = r.headers.get("content-type") || "";
