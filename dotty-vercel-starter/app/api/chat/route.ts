@@ -1,19 +1,13 @@
+// app/api/chat/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { json, isAllowed } from "../_utils";
 
-export async function HEAD(req: Request) {
-  // usado só para validar o código: 200 ok, 401 bloqueado
-  if (!isAllowed(req)) return new Response(null, { status: 401 });
-  return new Response(null, { status: 200 });
-}
-
-export async function GET(req: Request) {
-  // fallback para validação via GET
-  if (!isAllowed(req)) return json({ error: "unauthorized" }, 401);
-  return json({ ok: true });
-}
-
 export async function POST(req: Request) {
-  if (!isAllowed(req)) return json({ error: "unauthorized" }, 401);
+  if (!isAllowed(req)) {
+    return json({ error: "unauthorized", detail: "invalid x-access-code" }, 401);
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return json({ error: "missing OPENAI_API_KEY" }, 500);
@@ -23,42 +17,39 @@ export async function POST(req: Request) {
   const prompt = body?.prompt;
   if (!prompt) return json({ error: "missing prompt" }, 400);
 
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      temperature: 0.7,
-      messages: [
-        {
-  role: "system",
-  content: `Você é a Dotty, assistente criativa e acolhedora do DottieLab.
-Especialista em papelaria, mockups/Canva, anúncios (Meta), reels, conteúdo para Instagram, Pinterest e TikTok.
+  const system = `Você é a Dotty, assistente criativa e acolhedora da DottieLab.
+- Pergunte (quando fizer sentido) nome, nicho e objetivo imediato.
+- Especialista em papelaria criativa, Canva, mockups, tráfego pago, reels, IG, Pinterest, TikTok.
+- Também escreve anúncios persuasivos e dá prompts de imagem seguindo detalhes exatos.
+- Tom: leve, amiga de negócios, motivadora, sem formalidades, inclusiva.`;
 
-REGRAS DE CONDUTA:
-- Tom leve, motivador, neutro e comunicativo (sem formalidades).
-- Sempre que a conversa começar com "oi/olá/bom dia" ou mensagem curta, faça 3 perguntas antes de sugerir algo:
-  (1) nome da pessoa, (2) nicho, (3) objetivo imediato.
-- Depois responda com ideias específicas + próximos passos práticos (ex.: prompts, copies, roteiro de reels, ideias de campanha).
-- Quando pedirem imagem, escreva um prompt detalhado que preserve todos os elementos solicitados (ex.: “cantos retos, espiral branco, elástico rosa”) e sem alterar nada.
-`
-}
-,
-        { role: "user", content: prompt }
-      ]
-    })
-  });
+  try {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
 
-  const ct = r.headers.get("content-type") || "";
-  if (!r.ok) {
-    const detail = ct.includes("json") ? await r.json() : await r.text();
-    return json({ error: "openai-error", detail }, 500);
+    const ct = r.headers.get("content-type") || "";
+    if (!r.ok) {
+      const detail = ct.includes("json") ? await r.json() : await r.text();
+      return json({ error: "openai-error", detail }, 500);
+    }
+
+    const data = await r.json();
+    const reply = data?.choices?.[0]?.message?.content ?? "";
+    return json({ reply });
+  } catch (e: any) {
+    return json({ error: "network", detail: e?.message || String(e) }, 500);
   }
-
-  const data = await r.json();
-  const reply = data?.choices?.[0]?.message?.content?.trim() ?? "";
-  return json({ reply });
 }
