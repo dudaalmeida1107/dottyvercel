@@ -1,23 +1,42 @@
-export function json(data: any, status = 200) {
+// app/api/_utils.ts
+export function json(data: any, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      ...headers,
+    },
   });
 }
 
-const normalize = (s: string) => (s || "")
-  .toLowerCase()
-  .replace(/[^a-z0-9]/g, ""); // remove traços, espaços, acentos, etc.
+function norm(s: string) {
+  return (s || "").trim().toUpperCase();
+}
 
-const allowList = (process.env.ACCESS_CODES || "")
-  .split(",")
-  .map(s => normalize(s))
-  .filter(Boolean);
+function getEnvCodes(): string[] {
+  const a = process.env.ACCESS_CODE ? [process.env.ACCESS_CODE] : [];
+  const b = process.env.ACCESS_CODES ? [process.env.ACCESS_CODES] : [];
+  return (a.concat(b).join(","))
+    .split(/[,\n;]/)
+    .map(norm)
+    .filter(Boolean);
+}
 
-/** Aceita sem maiúsc/minúsc e ignora traços/espaços.
- *  Se ACCESS_CODES estiver vazio, libera geral (bom p/ teste). */
+/** Portão: true = pode passar; false = 401 */
 export function isAllowed(req: Request) {
-  if (allowList.length === 0) return true;
-  const headerCode = req.headers.get("x-access-code") || "";
-  return allowList.includes(normalize(headerCode));
+  // atalho para testes
+  if (process.env.DISABLE_GATE === "1") return true;
+
+  const configured = getEnvCodes();
+  // Se não configurou nenhum código, não bloqueia (útil em dev/preview)
+  if (configured.length === 0) return true;
+
+  // header enviado pelo front
+  const received =
+    req.headers.get("x-access-code") ||
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    "";
+
+  return configured.includes(norm(received));
 }
